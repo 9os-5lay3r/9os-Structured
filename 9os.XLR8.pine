@@ -1,7 +1,7 @@
 // This source code is subject to the terms of the Mozilla Public License 2.0 at https://mozilla.org/MPL/2.0/
 //
 // ================================================================================================================
-//  9os · STRUCTURED  —  ICT HTF Candles + Smart Money Concepts  (single-file compilation)
+//  9os.XLR8  —  ICT HTF Candles + Smart Money Concepts  (single-file compilation)
 // ----------------------------------------------------------------------------------------------------------------
 //  MODULE A · "ICT HTF Candles (fadi)"           (c) fadizeidan   License: MPL 2.0
 //  MODULE B · "Smart Money Concepts [LuxAlgo]"   (c) LuxAlgo      License: CC BY-NC-SA 4.0
@@ -32,6 +32,8 @@
 //      string->number guess and a `HTF == '1M'` branch that could never be reached)
 //    · Imbalance (FVG / VI) boxes: "Single" or "Bull / Bear" colour, optional FVG / VI tag, optional extend-right
 //    · box.set_top / set_bottom use min/max, so bullish bodies are no longer created inverted
+//    · [v6] label handling uses a "create if missing, then always move it" shape: an if/else whose one block
+//      returns a label and the other returns void is a compile error in v6 (CE10235)
 //    · removed the debug log.info() call and the unused HTFBuffer/offset leftovers
 //
 //  MODULE B · changes vs the original
@@ -55,7 +57,7 @@
 // ================================================================================================================
 
 //@version=6
-indicator('9os Structured · ICT HTF Candles + Smart Money Concepts', '9os · ICT + SMC', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
+indicator('9os.XLR8', '9os.XLR8', overlay = true, max_boxes_count = 500, max_lines_count = 500, max_labels_count = 500, max_bars_back = 5000)
 
 //+==============================================================================================================+//
 //+---  1 · TYPES                                                                                            ---+//
@@ -1208,17 +1210,17 @@ Reorder(CandleSet candleSet, int offset, array<int> active) =>
             line.set_x1(candle.wick_down, bar_index + halfWidth + t_buffer)
             line.set_x2(candle.wick_down, bar_index + halfWidth + t_buffer)
 
+            // [v6] "create if missing, then always move it": an if/else whose one block ends with a label and
+            // the other with a void call is rejected (CE10235)
             if settings.daily_name
                 if na(candle.dow_label)
                     candle.dow_label := label.new(bar_index + halfWidth + t_buffer, candle.h, candle.dow, color = color_transparent, textcolor = settings.dow_color, style = label.style_label_down, size = settings.dow_size)
-                else
-                    label.set_y(candle.dow_label, candle.h)
-                    label.set_x(candle.dow_label, bar_index + halfWidth + t_buffer)
-                    label.set_text(candle.dow_label, candle.dow)
-            else
-                if not na(candle.dow_label)
-                    label.delete(candle.dow_label)
-                    candle.dow_label := na
+                label.set_y(candle.dow_label, candle.h)
+                label.set_x(candle.dow_label, bar_index + halfWidth + t_buffer)
+                label.set_text(candle.dow_label, candle.dow)
+            if not settings.daily_name and not na(candle.dow_label)
+                label.delete(candle.dow_label)
+                candle.dow_label := na
 
     float top       = 0.0
     float bottom    = 0.0
@@ -1245,28 +1247,27 @@ Reorder(CandleSet candleSet, int offset, array<int> active) =>
         string tmr = '(' + RemainingTime(candleSet.settings.htf) + ')' + (settings.daily_name ? '\n' : '')
 
         if settings.label_position == 'Both' or settings.label_position == 'Top'
+            // [v6] create if missing, then always move it (see the dow_label comment above)
             if na(candleSet.tfNameTop)
                 candleSet.tfNameTop := label.new(left, top, lblt, color = color_transparent, textcolor = settings.htf_label_color, style = label.style_label_down, size = settings.htf_label_size)
-            else
-                label.set_xy(candleSet.tfNameTop, left, top)
+            label.set_xy(candleSet.tfNameTop, left, top)
             if settings.htf_timer_show
                 if na(candleSet.tfTimerTop)
                     candleSet.tfTimerTop := label.new(left, top, tmr, color = color_transparent, textcolor = settings.htf_timer_color, style = label.style_label_down, size = settings.htf_timer_size)
-                else
-                    label.set_xy(candleSet.tfTimerTop, left, top)
+                label.set_xy(candleSet.tfTimerTop, left, top)
 
         if settings.label_position == 'Both' or settings.label_position == 'Bottom'
+            // [v6] create if missing, then always move it (see the dow_label comment above)
             if na(candleSet.tfNameBottom)
                 candleSet.tfNameBottom := label.new(left, bottom, lbll, color = color_transparent, textcolor = settings.htf_label_color, style = label.style_label_up, size = settings.htf_label_size)
-            else
-                label.set_xy(candleSet.tfNameBottom, left, bottom)
+            label.set_xy(candleSet.tfNameBottom, left, bottom)
             if settings.htf_timer_show
                 if na(candleSet.tfTimerBottom)
                     candleSet.tfTimerBottom := label.new(left, bottom, tmr, color = color_transparent, textcolor = settings.htf_timer_color, style = label.style_label_up, size = settings.htf_timer_size)
-                else
-                    label.set_xy(candleSet.tfTimerBottom, left, bottom)
-    else
-        // the labels were switched off, remove whatever is left of them
+                label.set_xy(candleSet.tfTimerBottom, left, bottom)
+
+    // the labels were switched off, remove whatever is left of them
+    if not settings.htf_label_show
         if not na(candleSet.tfNameTop)
             label.delete(candleSet.tfNameTop)
             candleSet.tfNameTop := na
@@ -1448,58 +1449,50 @@ Update(CandleSet candleSet, int offset, bool showTrace, array<int> active) =>
                 if bar_index - candle.o_idx < 5000
                     if na(trace.o)
                         trace.o := line.new(candle.o_idx, candle.o, box.get_left(candle.body), candle.o, xloc = xloc.bar_index, color = settings.trace_o_color, style = LineStyle(settings.trace_o_style), width = settings.trace_o_size)
-                    else
-                        line.set_xy1(trace.o, candle.o_idx, candle.o)
-                        line.set_xy2(trace.o, box.get_left(candle.body), candle.o)
+                    line.set_xy1(trace.o, candle.o_idx, candle.o)
+                    line.set_xy2(trace.o, box.get_left(candle.body), candle.o)
 
                     if settings.label_show
                         if na(trace.o_l)
                             trace.o_l := label.new(box.get_right(candle.body), candle.o, str.tostring(candle.o), textalign = text.align_center, style = label.style_label_left, size = settings.label_size, color = color_transparent, textcolor = settings.label_color)
-                        else
-                            label.set_xy(trace.o_l, box.get_right(candle.body), candle.o)
-                            label.set_text(trace.o_l, str.tostring(candle.o))
+                        label.set_xy(trace.o_l, box.get_right(candle.body), candle.o)
+                        label.set_text(trace.o_l, str.tostring(candle.o))
 
                 if bar_index - candle.c_idx < 5000
                     if na(trace.c)
                         trace.c := line.new(candle.c_idx, candle.c, box.get_left(candle.body), candle.c, xloc = xloc.bar_index, color = settings.trace_c_color, style = LineStyle(settings.trace_c_style), width = settings.trace_c_size)
-                    else
-                        line.set_xy1(trace.c, candle.c_idx, candle.c)
-                        line.set_xy2(trace.c, box.get_left(candle.body), candle.c)
+                    line.set_xy1(trace.c, candle.c_idx, candle.c)
+                    line.set_xy2(trace.c, box.get_left(candle.body), candle.c)
 
                     if settings.label_show
                         if na(trace.c_l)
                             trace.c_l := label.new(box.get_right(candle.body), candle.c, str.tostring(candle.c), textalign = text.align_center, style = label.style_label_left, size = settings.label_size, color = color_transparent, textcolor = settings.label_color)
-                        else
-                            label.set_xy(trace.c_l, box.get_right(candle.body), candle.c)
-                            label.set_text(trace.c_l, str.tostring(candle.c))
+                        label.set_xy(trace.c_l, box.get_right(candle.body), candle.c)
+                        label.set_text(trace.c_l, str.tostring(candle.c))
 
                 if bar_index - candle.h_idx < 5000
                     if na(trace.h)
                         trace.h := line.new(candle.h_idx, candle.h, line.get_x1(candle.wick_up), candle.h, xloc = xloc.bar_index, color = settings.trace_h_color, style = LineStyle(settings.trace_h_style), width = settings.trace_h_size)
-                    else
-                        line.set_xy1(trace.h, candle.h_idx, candle.h)
-                        line.set_xy2(trace.h, line.get_x1(candle.wick_up), candle.h)
+                    line.set_xy1(trace.h, candle.h_idx, candle.h)
+                    line.set_xy2(trace.h, line.get_x1(candle.wick_up), candle.h)
 
                     if settings.label_show
                         if na(trace.h_l)
                             trace.h_l := label.new(box.get_right(candle.body), candle.h, str.tostring(candle.h), textalign = text.align_center, style = label.style_label_left, size = settings.label_size, color = color_transparent, textcolor = settings.label_color)
-                        else
-                            label.set_xy(trace.h_l, box.get_right(candle.body), candle.h)
-                            label.set_text(trace.h_l, str.tostring(candle.h))
+                        label.set_xy(trace.h_l, box.get_right(candle.body), candle.h)
+                        label.set_text(trace.h_l, str.tostring(candle.h))
 
                 if bar_index - candle.l_idx < 5000
                     if na(trace.l)
                         trace.l := line.new(candle.l_idx, candle.l, line.get_x1(candle.wick_down), candle.l, xloc = xloc.bar_index, color = settings.trace_l_color, style = LineStyle(settings.trace_l_style), width = settings.trace_l_size)
-                    else
-                        line.set_xy1(trace.l, candle.l_idx, candle.l)
-                        line.set_xy2(trace.l, line.get_x1(candle.wick_down), candle.l)
+                    line.set_xy1(trace.l, candle.l_idx, candle.l)
+                    line.set_xy2(trace.l, line.get_x1(candle.wick_down), candle.l)
 
                     if settings.label_show
                         if na(trace.l_l)
                             trace.l_l := label.new(box.get_right(candle.body), candle.l, str.tostring(candle.l), textalign = text.align_center, style = label.style_label_left, size = settings.label_size, color = color_transparent, textcolor = settings.label_color)
-                        else
-                            label.set_xy(trace.l_l, box.get_right(candle.body), candle.l)
-                            label.set_text(trace.l_l, str.tostring(candle.l))
+                        label.set_xy(trace.l_l, box.get_right(candle.body), candle.l)
+                        label.set_text(trace.l_l, str.tostring(candle.l))
 //+==============================================================================================================+//
 //+---  9 · FUNCTIONS   ·   MODULE C · glue                                                                  ---+//
 //+==============================================================================================================+//
@@ -1674,9 +1667,8 @@ if barstate.islast
 
         if na(legendLabel)
             legendLabel := label.new(bar_index + 1, na, legendText, xloc = xloc.bar_index, yloc = yloc.belowbar, style = label.style_label_up, color = color.new(#131722, 15), textcolor = #d1d4dc, size = size.small, textalign = text.align_left)
-        else
-            label.set_text(legendLabel, legendText)
-    else if not na(legendLabel)
+        label.set_text(legendLabel, legendText)
+    if not settings.legend_show and not na(legendLabel)
         label.delete(legendLabel)
         legendLabel := na
 

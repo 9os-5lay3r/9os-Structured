@@ -1,10 +1,10 @@
 # 9os-Structured
 
-Straight up compilation — two published Pine Script indicators, fused into **one** v6 indicator.
+Straight up compilation — two published Pine Script indicators, fused into **one** v6 indicator named **`9os.XLR8`**.
 
 | File | What it is |
 | --- | --- |
-| `ICT_HTF_Candles_LuxAlgo.pine` | The merged indicator: `ICT HTF Candles (fadi)` + `Smart Money Concepts [LuxAlgo]` |
+| `9os.XLR8.pine` | The merged indicator: `ICT HTF Candles (fadi)` + `Smart Money Concepts [LuxAlgo]` |
 
 ## Source material
 
@@ -20,7 +20,7 @@ If you republish this file, keep this notice and both attributions.
 ## Install
 
 1. TradingView → **Pine Editor** → *Open* → **New indicator**.
-2. Paste the whole content of `ICT_HTF_Candles_LuxAlgo.pine`.
+2. Paste the whole content of `9os.XLR8.pine`.
 3. **Save**, then **Add to chart**.
 4. Open the indicator settings. Everything from both originals is there, plus two new groups:
 
@@ -44,6 +44,15 @@ Groups that come from the SMC module are prefixed with `SMC · ` so the input tr
 
 The header comment block inside the `.pine` file lists every deviation from the two originals, and every line
 that differs from an original is tagged with `// [merge]` or `// [v6]` so the two can be diffed.
+
+## Fixed after the first Pine compile
+
+| Problem | Fix |
+| --- | --- |
+| `CE10235 — Return type of one of the "if" or "switch" blocks is not compatible… (series label; void)`, raised on the HTF label block in `Reorder()` | Pine v6 rejects an `if/else` whose one branch ends with a value (e.g. `x := label.new(...)`) and the other with a `void` call (e.g. `label.set_xy(...)`). All fourteen occurrences (HTF labels, remaining-time labels, interval stamps, trace lines and price labels, legend) now use a **create if missing, then always move it** shape, so every branch is `void`. |
+| `SHORT TITLE TOO LONG (15 characters)` | The script is now called `9os.XLR8` (8 characters), used as both the title and the short title. |
+
+Bugs of the same family were swept in one pass, so the second compile should not surface more of them.
 
 ## Things worth knowing
 
