@@ -46,6 +46,25 @@ Groups that come from the SMC module are prefixed with `SMC · ` so the input tr
 The header comment block inside the `.pine` file lists every deviation from the two originals, and every line
 that differs from an original is tagged with `// [merge]` or `// [v6]` so the two can be diffed.
 
+## Candle width and height
+
+`Styling` has the two size controls for the HTF candles:
+
+| Input | What it does |
+| --- | --- |
+| `Candle Width` | horizontal size of each HTF candle (existing, 1-4, drawn at twice the value) |
+| `Candle Height` | **new** — vertical size of each HTF candle. `1` = the true high-low range, `0.5` = half the range, `2` = double (0.1 - 5, step 0.05) |
+
+The height scaling keeps each candle's **midpoint** where it is, so nothing drifts sideways, and at `1` the
+controls are a no-op — the picture is byte-for-byte the one you had before.
+
+Everything that is *drawn* follows the scale: bodies, wicks, the FVG / VI boxes, the CRT level lines and tags,
+the interval stamp, the `1` / `2` badges and the top / bottom HTF labels.
+
+Everything that is *calculated or printed as a price* stays on real prices: the CRT sweep / reclaim engine (so a
+compressed candle can never change whether a range was swept) and the trace lines plus their price labels (those
+mark true levels on the chart, not the scaled drawing).
+
 ## CRT highs & lows (Candle Range Theory)
 
 A per-row state machine. Nothing is drawn on candle 1 — the levels only appear once the range has been
