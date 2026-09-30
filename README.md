@@ -67,16 +67,19 @@ A per-row state machine. Nothing is drawn on candle 1 — the levels only appear
 - **Candle numbers**: the `1` / `2` badges, with colour and size, can be switched off if you only want levels.
 - Every state change is driven by candle *closes* on the HTF, so it behaves identically on history and live.
 
-## Fixed after the second Pine compile
+## Fixed after the Pine compiles
 
 | Problem | Fix |
 | --- | --- |
 | `CE10137 — Unable to determine the object for the field assignment` on `array.get(candleSet.candles, 1).crt_num := 1` | Pine v6 cannot assign a field on the result of a call. The candle is taken into a variable first (`Candle firstRange = array.get(...)`), then its field is assigned. |
 | `CW10003 — The function 'smcModule' should be called on each calculation for consistency` | The SMC module contains `ta.*` state (`ta.highest`, `ta.lowest`, `ta.change`, `ta.crossover`, `ta.cum`, `timeframe.change`) and was called from inside `if theme.show_smc`. **The module now calculates on every bar, unconditionally.** The master switch and the display inputs moved into the draw functions, so they still control exactly what reaches the chart — and what alerts (the per-bar alert state is cleared while the module is off). |
 
+| `CE10088 — Cannot modify global variable "currentAlerts" in function` | A function may mutate a *field* of a global object (`currentAlerts.equalLows := true` — which the LuxAlgo code does throughout) but never the global variable itself. The line that reset the alert object inside `smcModule()` is gone; the alert carriers are now gated at global scope with `theme.show_smc and currentAlerts.x`. |
+
 Behaviour consequence worth knowing: turning the SMC module off no longer freezes its internal state. Structures,
 order blocks and gaps keep being tracked in the background (that is what keeps the `ta.*` series identical to
-running the module alone), so switching it back on shows a chart that is already up to date.
+running the module alone), so switching it back on shows a chart that is already up to date. Its alerts stay
+silent while it is off, because the carriers are gated by the master switch.
 
 ## Fixed after the first Pine compile
 
@@ -110,7 +113,7 @@ Bugs of the same family were swept in one pass, so the second compile should not
 python3 tools/pine_lint.py 9os.XLR8.pine
 ```
 
-Five checks, each one added after a real failure in this repo:
+Eight checks, each one added after a real failure in this repo (and each one tested by re-injecting its bug):
 
 | Check | Why it exists |
 | --- | --- |
@@ -118,6 +121,9 @@ Five checks, each one added after a real failure in this repo:
 | value-vs-void `if/else` | `CE10235`: one branch ending with a label, the other with `label.set_xy()` — this is what the first compile failed on |
 | forward references | a user function may not read a global or call a function declared further down (`Reorder()` → `DrawCrt()` was caught here) |
 | unknown UDT fields | `settings.foo` regexes used to also match `htfSettings.foo`; the matcher is anchored now |
+| in-place field assignment | `CE10137`: `array.get(a, i).field := x` cannot compile |
+| global writes in a function | `CE10088`: a function reassigning a global variable (fields are fine) |
+| stateful calls from a branch | `CW10003`: a `ta.*`-carrying function called inside an `if`, which the editor warns about |
 | trailing whitespace / parens | cheap noise that sometimes hides a real problem |
 
 TradingView remains the only authority — this just catches the classes of mistake it has already reported once.

@@ -17,6 +17,9 @@ into the editor. Every check here exists because one of them has already bitten 
                          (`array.get(a, i).field := x` must go through a variable)
   7. stateful calls    - CW10003: a function that keeps ta.* / timeframe.change state must not be called from a
                          local scope (a branch), or its series go inconsistent between runs
+  8. global writes     - CE10088: a function cannot reassign a global variable (`currentAlerts := alerts.new()`).
+                         Fields of a global object are fine (`currentAlerts.equalLows := true`), the variable
+                         itself is not
 
 Usage:  python3 tools/pine_lint.py 9os.XLR8.pine
 Exit code 0 = clean, 1 = something to look at.
@@ -257,6 +260,28 @@ def check_stateful_calls(lines):
     return sorted(set(out))
 
 
+def check_global_writes(lines):
+    """CE10088: `global := ...` inside a function body is not allowed."""
+    globals_, funcs = scan_declarations(lines)
+    out = []
+    for line, name, params, body in funcs:
+        locals_ = set(params)
+        for bl, code in body:
+            code = code.split('//')[0]
+            # local declarations: `Type x = ...`, `var Type x = ...`, `x = ...`
+            for m in re.finditer(r'(?:var\s+|varip\s+)?(?:[\w<>]+\s+|)(\w+)\s*=[^=]', code):
+                locals_.add(m.group(1))
+            m = re.match(r'\s*([A-Za-z_]\w*)\s*:=', code)
+            if not m:
+                continue
+            target = m.group(1)
+            if target in locals_:
+                continue
+            if target in globals_:
+                out.append((bl, 'function %s() reassigns the global %s' % (name, target)))
+    return sorted(set(out))
+
+
 def check_noise(lines):
     out = []
     for i, l in enumerate(lines, 1):
@@ -287,6 +312,7 @@ def main():
     report('unknown UDT fields', check_udt_fields(lines))
     report('in-place field assignment (CE10137)', check_inplace_field_assign(lines))
     report('stateful calls from a branch (CW10003)', check_stateful_calls(lines))
+    report('global writes inside a function (CE10088)', check_global_writes(lines))
     report('noise', check_noise(lines))
     print('\n%s: %d lines, %d findings' % (path, len(lines), total))
     return 1 if total else 0

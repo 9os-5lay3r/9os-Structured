@@ -56,6 +56,9 @@
 //      depend on ta.* (ta.highest / ta.change / ta.crossover / ta.cum / timeframe.change) must not be called
 //      from a branch, or its values drift. The master switch and the display inputs therefore live inside the
 //      draw functions and only decide what reaches the chart (and the alerts).
+//    · [v6] CE10088: a function may mutate a *field* of a global object (currentAlerts.equalLows := true) but
+//      never the global variable itself. The alert carriers are therefore gated at global scope with
+//      `theme.show_smc and currentAlerts.x` instead of resetting the object from inside the function
 //    · [v6] the equilibrium zone is monochrome aware, like the premium and discount zones
 //    · explicit na handling in updateTrailingExtremes() (same picture as the original, cannot get stuck)
 //    · the order block colouring / drawing code is unchanged, including the 100 block cap and the
@@ -1839,10 +1842,6 @@ smcModule(bool newBar) =>
         drawOrderBlocks(true)
         drawOrderBlocks()
 
-    // nothing should alert once the module is switched off
-    if not theme.show_smc
-        currentAlerts := alerts.new()
-
     if barstate.islastconfirmedhistory or (barstate.isrealtime and newBar)
         if showDailyLevelsInput and not higherTimeframe('D')
             drawLevels('D', timeframe.isdaily, dailyLevelsStyleInput, dailyLevelsColorInput)
@@ -1886,25 +1885,25 @@ currentBarIndex := bar_index
 bool smcNewBar  = currentBarIndex != lastBarIndex
 
 // the module always runs so every ta.* series inside it stays consistent; the master switch only decides what
-// is drawn and what alerts (guards inside smcModule and the draw functions)
+// is drawn (guards inside the draw functions) and what alerts (the carriers below are gated by it)
 int smcTrendBias = smcModule(smcNewBar)
 
-alInternalBullishBOS        := currentAlerts.internalBullishBOS
-alInternalBearishBOS        := currentAlerts.internalBearishBOS
-alInternalBullishCHoCH      := currentAlerts.internalBullishCHoCH
-alInternalBearishCHoCH      := currentAlerts.internalBearishCHoCH
-alSwingBullishBOS           := currentAlerts.swingBullishBOS
-alSwingBearishBOS           := currentAlerts.swingBearishBOS
-alSwingBullishCHoCH         := currentAlerts.swingBullishCHoCH
-alSwingBearishCHoCH         := currentAlerts.swingBearishCHoCH
-alInternalBullishOrderBlock := currentAlerts.internalBullishOrderBlock
-alInternalBearishOrderBlock := currentAlerts.internalBearishOrderBlock
-alSwingBullishOrderBlock    := currentAlerts.swingBullishOrderBlock
-alSwingBearishOrderBlock    := currentAlerts.swingBearishOrderBlock
-alEqualHighs                := currentAlerts.equalHighs
-alEqualLows                 := currentAlerts.equalLows
-alBullishFairValueGap       := currentAlerts.bullishFairValueGap
-alBearishFairValueGap       := currentAlerts.bearishFairValueGap
+alInternalBullishBOS := theme.show_smc and currentAlerts.internalBullishBOS
+alInternalBearishBOS := theme.show_smc and currentAlerts.internalBearishBOS
+alInternalBullishCHoCH := theme.show_smc and currentAlerts.internalBullishCHoCH
+alInternalBearishCHoCH := theme.show_smc and currentAlerts.internalBearishCHoCH
+alSwingBullishBOS := theme.show_smc and currentAlerts.swingBullishBOS
+alSwingBearishBOS := theme.show_smc and currentAlerts.swingBearishBOS
+alSwingBullishCHoCH := theme.show_smc and currentAlerts.swingBullishCHoCH
+alSwingBearishCHoCH := theme.show_smc and currentAlerts.swingBearishCHoCH
+alInternalBullishOrderBlock := theme.show_smc and currentAlerts.internalBullishOrderBlock
+alInternalBearishOrderBlock := theme.show_smc and currentAlerts.internalBearishOrderBlock
+alSwingBullishOrderBlock := theme.show_smc and currentAlerts.swingBullishOrderBlock
+alSwingBearishOrderBlock := theme.show_smc and currentAlerts.swingBearishOrderBlock
+alEqualHighs := theme.show_smc and currentAlerts.equalHighs
+alEqualLows := theme.show_smc and currentAlerts.equalLows
+alBullishFairValueGap := theme.show_smc and currentAlerts.bullishFairValueGap
+alBearishFairValueGap := theme.show_smc and currentAlerts.bearishFairValueGap
 
 // --------------------------------------------------------------------------------------------------- TREND CANDLES
 color candleColor = smcTrendBias == BULLISH ? swingBullishColor : swingBearishColor
