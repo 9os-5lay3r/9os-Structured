@@ -67,6 +67,17 @@ A per-row state machine. Nothing is drawn on candle 1 — the levels only appear
 - **Candle numbers**: the `1` / `2` badges, with colour and size, can be switched off if you only want levels.
 - Every state change is driven by candle *closes* on the HTF, so it behaves identically on history and live.
 
+## Fixed after the second Pine compile
+
+| Problem | Fix |
+| --- | --- |
+| `CE10137 — Unable to determine the object for the field assignment` on `array.get(candleSet.candles, 1).crt_num := 1` | Pine v6 cannot assign a field on the result of a call. The candle is taken into a variable first (`Candle firstRange = array.get(...)`), then its field is assigned. |
+| `CW10003 — The function 'smcModule' should be called on each calculation for consistency` | The SMC module contains `ta.*` state (`ta.highest`, `ta.lowest`, `ta.change`, `ta.crossover`, `ta.cum`, `timeframe.change`) and was called from inside `if theme.show_smc`. **The module now calculates on every bar, unconditionally.** The master switch and the display inputs moved into the draw functions, so they still control exactly what reaches the chart — and what alerts (the per-bar alert state is cleared while the module is off). |
+
+Behaviour consequence worth knowing: turning the SMC module off no longer freezes its internal state. Structures,
+order blocks and gaps keep being tracked in the background (that is what keeps the `ta.*` series identical to
+running the module alone), so switching it back on shows a chart that is already up to date.
+
 ## Fixed after the first Pine compile
 
 | Problem | Fix |

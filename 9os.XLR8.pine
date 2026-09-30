@@ -13,7 +13,8 @@
 //
 //  WHAT WAS ADDED (glue)
 //    · one indicator() declaration (500 boxes / 500 lines / 500 labels, max_bars_back = 5000)
-//    · "Master" group: independent on/off switches for the ICT module and the SMC module
+//    · "Master" group: independent on/off switches for the ICT module and the SMC module. Switching the SMC
+//      module off stops its drawings and its alerts, but it keeps calculating - see the CW10003 note below
 //    · "Theme" group: the SMC "Style" (Colored / Monochrome, now with editable mono colours) moved out of the
 //      SMC group list so both modules share one palette reference
 //    · optional bridge: paint the ICT HTF candles with the SMC internal structure trend
@@ -49,13 +50,17 @@
 //    · [v6] LuxAlgo's `getStyle()` switch has a default branch (v6 forbids na for unique types)
 //    · [v6] the order block and MTF level maths never slice an empty range and never call
 //      array.max() / array.min() on an empty array
-//    · [v6] the 16 alertcondition() calls were hoisted to the global scope with per-bar boolean carriers,
-//      because the module itself now lives inside `if theme.show_smc` (alertcondition() only works globally)
+//    · [v6] the 16 alertcondition() calls were hoisted to the global scope with per-bar boolean carriers
+//      (alertcondition() only works at global scope)
+//    · [v6] CW10003: the module is now calculated on EVERY bar, switched on or off. A function whose series
+//      depend on ta.* (ta.highest / ta.change / ta.crossover / ta.cum / timeframe.change) must not be called
+//      from a branch, or its values drift. The master switch and the display inputs therefore live inside the
+//      draw functions and only decide what reaches the chart (and the alerts).
 //    · [v6] the equilibrium zone is monochrome aware, like the premium and discount zones
 //    · explicit na handling in updateTrailingExtremes() (same picture as the original, cannot get stuck)
 //    · the order block colouring / drawing code is unchanged, including the 100 block cap and the
 //      "delete mitigated blocks while iterating" behaviour
-//    · drawHighLowSwings() / drawPremiumDiscountZones() only run while the module is enabled
+//    · drawHighLowSwings() / drawPremiumDiscountZones() only *draw* while the module is enabled
 //    · the FVG alert flags are set in the same place they always were (drawFairValueGaps)
 //
 //  NOT BROKEN OUT (kept deliberately, both are opt-in and off by default)
@@ -706,10 +711,17 @@ startOfBullishLeg(int legValue)  => ta.change(legValue) == +1
 drawLabel(int labelTime, float labelPrice, string tag, color labelColor, string labelStyle) =>
     var label l_abel = na
 
-    if modeInput == PRESENT
+    if theme.show_smc and modeInput == PRESENT
         label.delete(l_abel)
 
-    l_abel := label.new(chart.point.new(labelTime, na, labelPrice), tag, xloc = xloc.bar_time, color = color(na), textcolor = labelColor, style = labelStyle, size = size.small)
+    if theme.show_smc
+        l_abel := label.new(chart.point.new(labelTime, na, labelPrice), tag, xloc = xloc.bar_time, color = color(na), textcolor = labelColor, style = labelStyle, size = size.small)
+
+    if not theme.show_smc and not na(l_abel)
+        label.delete(l_abel)
+        l_abel := na
+
+    l_abel
 
 // @function            create a new line and label representing an EQH or EQL
 // @param p_ivot        starting pivot
@@ -729,13 +741,26 @@ drawEqualHighLow(pivot p_ivot, float level, int size, bool equalHigh) =>
         equalColor  := swingBearishColor
         labelStyle  := label.style_label_down
 
-    if modeInput == PRESENT
+    // EQH / EQL are detected on every bar now, this is where the display is decided
+    bool drawing = theme.show_smc and showEqualHighsLowsInput
+
+    if drawing and modeInput == PRESENT
         line.delete(    e_qualDisplay.l_ine)
         label.delete(   e_qualDisplay.l_abel)
 
-    e_qualDisplay.l_ine     := line.new(chart.point.new(p_ivot.barTime, na, p_ivot.currentLevel), chart.point.new(time[size], na, level), xloc = xloc.bar_time, color = equalColor, style = line.style_dotted)
-    labelPosition           = math.round(0.5 * (p_ivot.barIndex + bar_index - size))
-    e_qualDisplay.l_abel    := label.new(chart.point.new(na, labelPosition, level), tag, xloc = xloc.bar_index, color = color(na), textcolor = equalColor, style = labelStyle, size = equalHighsLowsSizeInput)
+    if drawing
+        e_qualDisplay.l_ine     := line.new(chart.point.new(p_ivot.barTime, na, p_ivot.currentLevel), chart.point.new(time[size], na, level), xloc = xloc.bar_time, color = equalColor, style = line.style_dotted)
+        labelPosition           = math.round(0.5 * (p_ivot.barIndex + bar_index - size))
+        e_qualDisplay.l_abel    := label.new(chart.point.new(na, labelPosition, level), tag, xloc = xloc.bar_index, color = color(na), textcolor = equalColor, style = labelStyle, size = equalHighsLowsSizeInput)
+
+    if not drawing and not na(e_qualDisplay.l_ine)
+        line.delete(    e_qualDisplay.l_ine)
+        e_qualDisplay.l_ine := na
+    if not drawing and not na(e_qualDisplay.l_abel)
+        label.delete(   e_qualDisplay.l_abel)
+        e_qualDisplay.l_abel := na
+
+    e_qualDisplay.l_abel
 
 // @function            store current structure and trailing swing points, and also display swing points and equal highs/lows
 // @param size          (int) structure size
@@ -804,12 +829,20 @@ drawStructure(pivot p_ivot, string tag, color structureColor, string lineStyle, 
     var line l_ine      = line.new(na, na, na, na, xloc = xloc.bar_time)
     var label l_abel    = label.new(na, na)
 
-    if modeInput == PRESENT
+    if theme.show_smc and modeInput == PRESENT
         line.delete(l_ine)
         label.delete(l_abel)
 
-    l_ine   := line.new(chart.point.new(p_ivot.barTime, na, p_ivot.currentLevel), chart.point.new(time, na, p_ivot.currentLevel), xloc.bar_time, color = structureColor, style = lineStyle)
-    l_abel  := label.new(chart.point.new(na, math.round(0.5 * (p_ivot.barIndex + bar_index)), p_ivot.currentLevel), tag, xloc.bar_index, color = color(na), textcolor = structureColor, style = labelStyle, size = labelSize)
+    if theme.show_smc
+        l_ine   := line.new(chart.point.new(p_ivot.barTime, na, p_ivot.currentLevel), chart.point.new(time, na, p_ivot.currentLevel), xloc.bar_time, color = structureColor, style = lineStyle)
+        l_abel  := label.new(chart.point.new(na, math.round(0.5 * (p_ivot.barIndex + bar_index)), p_ivot.currentLevel), tag, xloc = xloc.bar_index, color = color(na), textcolor = structureColor, style = labelStyle, size = labelSize)
+
+    if not theme.show_smc and not na(l_ine)
+        line.delete(l_ine)
+        l_ine := na
+    if not theme.show_smc and not na(l_abel)
+        label.delete(l_abel)
+        l_abel := na
 
 // @function            delete order blocks
 // @param internal      true for internal order blocks
@@ -868,11 +901,18 @@ storeOrdeBlock(pivot p_ivot, bool internal = false, int bias) =>
 drawOrderBlocks(bool internal = false) =>
     array<orderBlock> orderBlocks = internal ? internalOrderBlocks : swingOrderBlocks
     orderBlocksSize = orderBlocks.size()
+    array<box> b_oxes                   = internal ? internalOrderBlocksBoxes : swingOrderBlocksBoxes
+    bool allowed    = theme.show_smc and (internal ? showInternalOrderBlocksInput : showSwingOrderBlocksInput)
 
-    if orderBlocksSize > 0
+    // the boxes are pre-created for this list, so they are dropped when the list is not drawn
+    if not allowed
+        for eachBox in b_oxes
+            box.delete(eachBox)
+        array.clear(b_oxes)
+
+    if allowed and orderBlocksSize > 0
         maxOrderBlocks                      = internal ? internalOrderBlocksSizeInput : swingOrderBlocksSizeInput
         array<orderBlock> parsedOrdeBlocks  = array.slice(orderBlocks, 0, math.min(maxOrderBlocks, orderBlocksSize))
-        array<box> b_oxes                   = internal ? internalOrderBlocksBoxes : swingOrderBlocksBoxes
 
         for [index, eachOrderBlock] in parsedOrdeBlocks
             orderBlockColor = theme.smc_style == MONOCHROME ? (eachOrderBlock.bias == BEARISH ? color.new(MONO_BEARISH, 80) : color.new(MONO_BULLISH, 80)) : internal ? (eachOrderBlock.bias == BEARISH ? internalBearishOrderBlockColor : internalBullishOrderBlockColor) : (eachOrderBlock.bias == BEARISH ? swingBearishOrderBlockColor : swingBullishOrderBlockColor)
@@ -913,10 +953,20 @@ drawFairValueGaps() =>
     bullishFairValueGap = currentLow > last2High and lastClose > last2High and barDeltaPercent > threshold and newTimeframe
     bearishFairValueGap = currentHigh < last2Low and lastClose < last2Low and -barDeltaPercent > threshold and newTimeframe
 
-    if bullishFairValueGap
+    // gaps are calculated on every bar (ta.cum and timeframe.change above need that), this decides the drawing
+    bool allowed = theme.show_smc and showFairValueGapsInput
+
+    if not allowed and array.size(fairValueGaps) > 0
+        array<fairValueGap> oldGaps = array.copy(fairValueGaps)
+        array.clear(fairValueGaps)
+        for eachOldGap in oldGaps
+            box.delete(eachOldGap.topBox)
+            box.delete(eachOldGap.bottomBox)
+
+    if allowed and bullishFairValueGap
         currentAlerts.bullishFairValueGap := true
         array.unshift(fairValueGaps, fairValueGap.new(currentLow, last2High, BULLISH, fairValueGapBox(lastTime, currentTime, currentLow, math.avg(currentLow, last2High), fairValueGapBullishColor), fairValueGapBox(lastTime, currentTime, math.avg(currentLow, last2High), last2High, fairValueGapBullishColor)))
-    if bearishFairValueGap
+    if allowed and bearishFairValueGap
         currentAlerts.bearishFairValueGap := true
         array.unshift(fairValueGaps, fairValueGap.new(currentHigh, last2Low, BEARISH, fairValueGapBox(lastTime, currentTime, currentHigh, math.avg(currentHigh, last2Low), fairValueGapBearishColor), fairValueGapBox(lastTime, currentTime, math.avg(currentHigh, last2Low), last2Low, fairValueGapBearishColor)))
 
@@ -969,13 +1019,27 @@ drawLevels(string htf, bool sameTimeframe, string style, color levelColor) =>
 
     int rightBarTime = last_bar_time + 20 * (time - time[1])
 
-    line.set_first_point(   topLine, chart.point.new(parsedTopTime, na, parsedTop))
-    line.set_second_point(  topLine, chart.point.new(rightBarTime, na, parsedTop))
-    label.set_point(        topLabel, chart.point.new(rightBarTime, na, parsedTop))
+    if theme.show_smc
+        line.set_first_point(   topLine, chart.point.new(parsedTopTime, na, parsedTop))
+        line.set_second_point(  topLine, chart.point.new(rightBarTime, na, parsedTop))
+        label.set_point(        topLabel, chart.point.new(rightBarTime, na, parsedTop))
 
-    line.set_first_point(   bottomLine, chart.point.new(parsedBottomTime, na, parsedBottom))
-    line.set_second_point(  bottomLine, chart.point.new(rightBarTime, na, parsedBottom))
-    label.set_point(        bottomLabel, chart.point.new(rightBarTime, na, parsedBottom))
+        line.set_first_point(   bottomLine, chart.point.new(parsedBottomTime, na, parsedBottom))
+        line.set_second_point(  bottomLine, chart.point.new(rightBarTime, na, parsedBottom))
+        label.set_point(        bottomLabel, chart.point.new(rightBarTime, na, parsedBottom))
+
+    if not theme.show_smc and not na(topLine)
+        line.delete(topLine)
+        topLine := na
+    if not theme.show_smc and not na(bottomLine)
+        line.delete(bottomLine)
+        bottomLine := na
+    if not theme.show_smc and not na(topLabel)
+        label.delete(topLabel)
+        topLabel := na
+    if not theme.show_smc and not na(bottomLabel)
+        label.delete(bottomLabel)
+        bottomLabel := na
 
 // @function            true if chart timeframe is higher than provided timeframe
 // @param htf           timeframe to check
@@ -999,17 +1063,31 @@ drawHighLowSwings() =>
     var label topLabel      = label.new(na, na, color = color(na), textcolor = swingBearishColor, xloc = xloc.bar_time, style = label.style_label_down, size = size.tiny)
     var label bottomLabel   = label.new(na, na, color = color(na), textcolor = swingBullishColor, xloc = xloc.bar_time, style = label.style_label_up, size = size.tiny)
 
+    if not theme.show_smc and not na(topLine)
+        line.delete(topLine)
+        topLine := na
+    if not theme.show_smc and not na(bottomLine)
+        line.delete(bottomLine)
+        bottomLine := na
+    if not theme.show_smc and not na(topLabel)
+        label.delete(topLabel)
+        topLabel := na
+    if not theme.show_smc and not na(bottomLabel)
+        label.delete(bottomLabel)
+        bottomLabel := na
+
     rightTimeBar            = last_bar_time + 20 * (time - time[1])
 
-    line.set_first_point(   topLine, chart.point.new(trailing.lastTopTime, na, trailing.top))
-    line.set_second_point(  topLine, chart.point.new(rightTimeBar, na, trailing.top))
-    label.set_point(        topLabel, chart.point.new(rightTimeBar, na, trailing.top))
-    label.set_text(         topLabel, swingTrend.bias == BEARISH ? 'Strong High' : 'Weak High')
+    if theme.show_smc
+        line.set_first_point(   topLine, chart.point.new(trailing.lastTopTime, na, trailing.top))
+        line.set_second_point(  topLine, chart.point.new(rightTimeBar, na, trailing.top))
+        label.set_point(        topLabel, chart.point.new(rightTimeBar, na, trailing.top))
+        label.set_text(         topLabel, swingTrend.bias == BEARISH ? 'Strong High' : 'Weak High')
 
-    line.set_first_point(   bottomLine, chart.point.new(trailing.lastBottomTime, na, trailing.bottom))
-    line.set_second_point(  bottomLine, chart.point.new(rightTimeBar, na, trailing.bottom))
-    label.set_point(        bottomLabel, chart.point.new(rightTimeBar, na, trailing.bottom))
-    label.set_text(         bottomLabel, swingTrend.bias == BULLISH ? 'Strong Low' : 'Weak Low')
+        line.set_first_point(   bottomLine, chart.point.new(trailing.lastBottomTime, na, trailing.bottom))
+        line.set_second_point(  bottomLine, chart.point.new(rightTimeBar, na, trailing.bottom))
+        label.set_point(        bottomLabel, chart.point.new(rightTimeBar, na, trailing.bottom))
+        label.set_text(         bottomLabel, swingTrend.bias == BULLISH ? 'Strong Low' : 'Weak Low')
 
 // @function            draw a zone with a label and a box
 // @param labelLevel    price level for label
@@ -1024,10 +1102,18 @@ drawZone(float labelLevel, labelIndex, float top, float bottom, string tag, colo
     var label l_abel    = label.new(na, na, text = tag, color = color(na), textcolor = zoneColor, style = style, size = size.small)
     var box b_ox        = box.new(na, na, na, na, bgcolor = color.new(zoneColor, 80), border_color = color(na), xloc = xloc.bar_time)
 
-    box.set_top_left_point(     b_ox, chart.point.new(trailing.barTime, na, top))
-    box.set_bottom_right_point( b_ox, chart.point.new(last_bar_time, na, bottom))
+    if theme.show_smc
+        box.set_top_left_point(     b_ox, chart.point.new(trailing.barTime, na, top))
+        box.set_bottom_right_point( b_ox, chart.point.new(last_bar_time, na, bottom))
 
-    label.set_point(            l_abel, chart.point.new(na, labelIndex, labelLevel))
+        label.set_point(            l_abel, chart.point.new(na, labelIndex, labelLevel))
+
+    if not theme.show_smc and not na(b_ox)
+        box.delete(b_ox)
+        b_ox := na
+    if not theme.show_smc and not na(l_abel)
+        label.delete(l_abel)
+        l_abel := na
 
 // @function            draw premium/discount zones
 // @returns             void
@@ -1599,7 +1685,9 @@ Monitor(CandleSet candleSet) =>
 
             if rangeIdx < 0
                 ClearCrtNumbers(candleSet)
-                array.get(candleSet.candles, 1).crt_num := 1
+                // [v6] CE10137: a field of an object returned by a call cannot be assigned in place
+                Candle firstRange = array.get(candleSet.candles, 1)
+                firstRange.crt_num := 1
             else if rangeIdx != 1
                 Candle rangeCandle  = array.get(candleSet.candles, rangeIdx)
                 Candle justClosed   = array.get(candleSet.candles, 1)
@@ -1729,36 +1817,31 @@ smcModule(bool newBar) =>
         if showPremiumDiscountZonesInput
             drawPremiumDiscountZones()
 
-    if showFairValueGapsInput
-        deleteFairValueGaps()
+    // [v6] CW10003: the calls below run on EVERY bar, module switched on or off, because the functions they
+    // lead to carry ta.* state (ta.highest / ta.lowest / ta.change / ta.crossover / ta.cum / timeframe.change).
+    // The master switch and the display inputs only decide what is DRAWN - see the guards inside the draw
+    // functions below. Calculating everything keeps those series identical to running the module alone.
+    deleteFairValueGaps()
 
     getCurrentStructure(swingsLengthInput, false)
     getCurrentStructure(5, false, true)
+    getCurrentStructure(equalHighsLowsLengthInput, true)
 
-    if showEqualHighsLowsInput
-        getCurrentStructure(equalHighsLowsLengthInput, true)
+    displayStructure(true)
+    displayStructure()
 
-    if showInternalsInput or showInternalOrderBlocksInput or showTrendInput
-        displayStructure(true)
+    deleteOrderBlocks(true)
+    deleteOrderBlocks()
 
-    if showStructureInput or showSwingOrderBlocksInput or showHighLowSwingsInput
-        displayStructure()
-
-    if showInternalOrderBlocksInput
-        deleteOrderBlocks(true)
-
-    if showSwingOrderBlocksInput
-        deleteOrderBlocks()
-
-    if showFairValueGapsInput
-        drawFairValueGaps()
+    drawFairValueGaps()
 
     if barstate.islastconfirmedhistory or barstate.islast
-        if showInternalOrderBlocksInput
-            drawOrderBlocks(true)
+        drawOrderBlocks(true)
+        drawOrderBlocks()
 
-        if showSwingOrderBlocksInput
-            drawOrderBlocks()
+    // nothing should alert once the module is switched off
+    if not theme.show_smc
+        currentAlerts := alerts.new()
 
     if barstate.islastconfirmedhistory or (barstate.isrealtime and newBar)
         if showDailyLevelsInput and not higherTimeframe('D')
@@ -1802,9 +1885,9 @@ lastBarIndex    := currentBarIndex
 currentBarIndex := bar_index
 bool smcNewBar  = currentBarIndex != lastBarIndex
 
-int smcTrendBias = 0
-if theme.show_smc
-    smcTrendBias := smcModule(smcNewBar)
+// the module always runs so every ta.* series inside it stays consistent; the master switch only decides what
+// is drawn and what alerts (guards inside smcModule and the draw functions)
+int smcTrendBias = smcModule(smcNewBar)
 
 alInternalBullishBOS        := currentAlerts.internalBullishBOS
 alInternalBearishBOS        := currentAlerts.internalBearishBOS

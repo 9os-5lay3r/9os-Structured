@@ -13,6 +13,10 @@ into the editor. Every check here exists because one of them has already bitten 
                          matched `htfSettings.foo` with a naive regex and produced a false alarm, so the
                          matcher is anchored properly here.
   5. trailing junk     - trailing whitespace and paren imbalance on a single logical line
+  6. in-place fields   - CE10137: a field of an object returned by a call cannot be assigned directly
+                         (`array.get(a, i).field := x` must go through a variable)
+  7. stateful calls    - CW10003: a function that keeps ta.* / timeframe.change state must not be called from a
+                         local scope (a branch), or its series go inconsistent between runs
 
 Usage:  python3 tools/pine_lint.py 9os.XLR8.pine
 Exit code 0 = clean, 1 = something to look at.
@@ -197,6 +201,62 @@ def check_udt_fields(lines):
     return out
 
 
+def check_inplace_field_assign(lines):
+    """CE10137: `array.get(...).field := x` and friends cannot be compiled."""
+    pattern = re.compile(r'\b(?:array\.(?:get|first|last|shift)|map\.get|matrix\.get|box\.copy)\([^)]*\)\.\w+\s*:=')
+    out = []
+    for i, l in enumerate(lines, 1):
+        code = '' if l.strip().startswith('//') else l.split('//')[0]
+        if pattern.search(code):
+            out.append((i, 'field assigned on a call result - put it in a variable first'))
+    return out
+
+
+STATE_CALL = re.compile(r'(?<![\w.])(?:ta\.[a-z_]+|timeframe\.change)\s*\(')
+
+
+def check_stateful_calls(lines):
+    """CW10003: calls to functions carrying ta.* state must not sit inside a branch."""
+    globals_, funcs = scan_declarations(lines)
+    body_lines, info = {}, {}
+    for line, name, params, body in funcs:
+        calls = set()
+        uses_state = False
+        for bl, code in body:
+            body_lines[bl] = name
+            code = code.split('//')[0]
+            if STATE_CALL.search(code):
+                uses_state = True
+            for ident in re.findall(r'(?<![\w.])([A-Za-z_]\w*)\s*\(', code):
+                calls.add(ident)
+        info[name] = {'line': line, 'uses_state': uses_state, 'calls': calls}
+
+    # propagate "uses ta.* state" through the call graph
+    changed = True
+    while changed:
+        changed = False
+        for name, d in info.items():
+            if d['uses_state']:
+                continue
+            for callee in d['calls']:
+                if callee in info and info[callee]['uses_state']:
+                    d['uses_state'] = True
+                    changed = True
+                    break
+
+    out = []
+    for i, l in enumerate(lines, 1):
+        if i in body_lines or not l.strip() or l.strip().startswith('//'):
+            continue                       # inside a function body: the caller is checked instead
+        if indent(l) == 0:
+            continue                       # global scope, always calculated
+        code = l.split('//')[0]
+        for callee in set(re.findall(r'(?<![\w.])([A-Za-z_]\w*)\s*\(', code)):
+            if callee in info and info[callee]['uses_state']:
+                out.append((i, '%s() keeps ta.* state but is called from a branch' % callee))
+    return sorted(set(out))
+
+
 def check_noise(lines):
     out = []
     for i, l in enumerate(lines, 1):
@@ -225,6 +285,8 @@ def main():
     report('forward references', check_forward_refs(lines),
            fmt=lambda r: '    %s() at line %s %s (declared at %s)' % (r[0], r[1], r[2], r[3]))
     report('unknown UDT fields', check_udt_fields(lines))
+    report('in-place field assignment (CE10137)', check_inplace_field_assign(lines))
+    report('stateful calls from a branch (CW10003)', check_stateful_calls(lines))
     report('noise', check_noise(lines))
     print('\n%s: %d lines, %d findings' % (path, len(lines), total))
     return 1 if total else 0
