@@ -46,23 +46,26 @@ Groups that come from the SMC module are prefixed with `SMC · ` so the input tr
 The header comment block inside the `.pine` file lists every deviation from the two originals, and every line
 that differs from an original is tagged with `// [merge]` or `// [v6]` so the two can be diffed.
 
-## CRT highs & lows (new)
+## CRT highs & lows (Candle Range Theory)
 
-Every HTF candle row can stamp **CRT-H** and **CRT-L** on the high and the low of its **newest closed candle** —
-the range candle of Candle Range Theory, which is where the liquidity sits.
+A per-row state machine. Nothing is drawn on candle 1 — the levels only appear once the range has been
+**swept and reclaimed**, which is the whole point of CRT.
 
-- **Per-row switch**: `CRT-H/L` sits on the right of each of the six `HTF n` rows, so you can run it on the
-  Daily row only, on everything, or on nothing. All six are **on** by default; turn off the ones you don't want.
-- **The levels ride along**: when a new HTF candle opens, the range candle rolls forward and the CRT lines and
-  tags move with it. `candles[0]` is the candle still forming, so the range candle is always `candles[1]`;
-  a row that has not closed a candle yet shows nothing.
-- **Fixed length, never extended right**: the line spans the range candle plus `Line padding` bars at each end
-  (default 3, so roughly an 8-bar level) — long enough to read as a level, short enough not to reach the next
-  row. It deliberately does **not** use `extend.right`.
-- **Tags**: `CRT-H` above the line and `CRT-L` below it, centred on the range candle, so nothing sits on top of
-  the newest candle of the row.
-- **Style group** `CRT Highs & Lows`: high / low colour, line style, width, padding and label size.
-- Each row's CRT drawing costs 2 lines + 2 labels. The legend appends `· CRT` to every row that has it on.
+| Step | What happens | On the chart |
+| --- | --- | --- |
+| the candle before the current one closes | it becomes **candle 1**, the range | a `1` badge inside the body |
+| a later candle *closes outside* candle 1's range | candle 1 is invalidated, the `1` **moves to that candle** | badge moves, old CRT levels and the `2` disappear |
+| a later candle **sweeps** candle 1's high or low **and closes back inside** its range | that candle becomes **candle 2** | a `2` badge, and **now** `CRT-H` / `CRT-L` are drawn at candle 1's extremes |
+| a candle closes inside the range without sweeping | nothing changes | still waiting on candle 1 |
+
+- **Per row**: `CRT-H/L` sits on the right of each of the six `HTF n` rows (all on by default).
+- **Timeframe**: `Only for` in the CRT group defaults to `1H and up` — your H1 / H4 / D / W / M workflow.
+  Set it to `Any timeframe` if you also want the 5m / 15m rows to run the engine.
+- **Lines**: `Line runs` = `Whole row` (reaches the newest candle of the row, as in the sketch) or
+  `Range candle` (stops just past candle 1). `Line padding` adds bars at each end — never `extend.right`.
+- **Tags**: `CRT tag` = `Right of line` (text sits at the end of the level) or `Above and below candle`.
+- **Candle numbers**: the `1` / `2` badges, with colour and size, can be switched off if you only want levels.
+- Every state change is driven by candle *closes* on the HTF, so it behaves identically on history and live.
 
 ## Fixed after the first Pine compile
 
