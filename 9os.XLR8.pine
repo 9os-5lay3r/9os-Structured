@@ -18,6 +18,9 @@
 //      SMC group list so both modules share one palette reference
 //    · optional bridge: paint the ICT HTF candles with the SMC internal structure trend
 //    · one legend label (bottom right) summarising both modules
+//    · CRT highs / lows: a per-row switch that marks the high and the low of the newest *closed* candle of that
+//      row with a fixed length level line and a "CRT-H" / "CRT-L" tag. Shared look (colours, line style,
+//      padding, label size) sits in the "CRT Highs & Lows" group.
 //
 //  MODULE A · changes vs the original
 //    · all Helper methods converted to plain functions (no receiver plumbing)
@@ -99,6 +102,8 @@ type CandleSettings
     bool show
     string htf
     int max_display
+    // CRT: label the high / low of the newest closed candle of this row
+    bool crt
 
 type Settings
     int max_sets
@@ -155,6 +160,13 @@ type Settings
     bool htf_timer_show
     color htf_timer_color
     string htf_timer_size
+    // CRT drawing settings (shared by every row)
+    color crt_high_color
+    color crt_low_color
+    string crt_style
+    int crt_width
+    int crt_pad
+    string crt_size
     // [merge] shared master switches / theme values (MODULE C · glue)
     bool trend_color
     bool legend_show
@@ -168,6 +180,10 @@ type CandleSet
     label tfTimerTop
     label tfTimerBottom
     int last_htf_time
+    line crtHighLine
+    line crtLowLine
+    label crtHighLabel
+    label crtLowLabel
 
 // ------------------------------------------------------------------------------- MODULE B · Smart Money Concepts
 type alerts
@@ -289,6 +305,7 @@ string group_style              = 'Styling  ━━━━━━━━━━━━
 string group_label              = 'Label Settings  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 string group_imbalance          = 'Imbalance  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 string group_trace              = 'Trace  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
+string group_crt                = 'CRT Highs & Lows  ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━'
 
 SMART_GROUP                     = 'SMC · Smart Money Concepts'
 INTERNAL_GROUP                  = 'SMC · Real Time Internal Structure'
@@ -335,31 +352,37 @@ SettingsHTF1.show           := input.bool(true, 'HTF 1      ', inlin
 htf_1                       = input.timeframe('5', '', inline = 'htf1', group = group_htf)
 SettingsHTF1.htf            := htf_1
 SettingsHTF1.max_display    := input.int(10, '', inline = 'htf1', group = group_htf, minval = 1, maxval = 100)
+SettingsHTF1.crt            := input.bool(true, 'CRT-H/L', inline = 'htf1', group = group_htf, tooltip = 'Draw the CRT high / low of the newest closed candle of this row')
 
 SettingsHTF2.show           := input.bool(true, 'HTF 2      ', inline = 'htf2', group = group_htf)
 htf_2                       = input.timeframe('15', '', inline = 'htf2', group = group_htf)
 SettingsHTF2.htf            := htf_2
 SettingsHTF2.max_display    := input.int(10, '', inline = 'htf2', group = group_htf, minval = 1, maxval = 100)
+SettingsHTF2.crt            := input.bool(true, 'CRT-H/L', inline = 'htf2', group = group_htf, tooltip = 'Draw the CRT high / low of the newest closed candle of this row')
 
 SettingsHTF3.show           := input.bool(true, 'HTF 3      ', inline = 'htf3', group = group_htf)
 htf_3                       = input.timeframe('60', '', inline = 'htf3', group = group_htf)
 SettingsHTF3.htf            := htf_3
 SettingsHTF3.max_display    := input.int(10, '', inline = 'htf3', group = group_htf, minval = 1, maxval = 100)
+SettingsHTF3.crt            := input.bool(true, 'CRT-H/L', inline = 'htf3', group = group_htf, tooltip = 'Draw the CRT high / low of the newest closed candle of this row')
 
 SettingsHTF4.show           := input.bool(true, 'HTF 4      ', inline = 'htf4', group = group_htf)
 htf_4                       = input.timeframe('240', '', inline = 'htf4', group = group_htf)
 SettingsHTF4.htf            := htf_4
 SettingsHTF4.max_display    := input.int(10, '', inline = 'htf4', group = group_htf, minval = 1, maxval = 100)
+SettingsHTF4.crt            := input.bool(true, 'CRT-H/L', inline = 'htf4', group = group_htf, tooltip = 'Draw the CRT high / low of the newest closed candle of this row')
 
 SettingsHTF5.show           := input.bool(true, 'HTF 5      ', inline = 'htf5', group = group_htf)
 htf_5                       = input.timeframe('1D', '', inline = 'htf5', group = group_htf)
 SettingsHTF5.htf            := htf_5
 SettingsHTF5.max_display    := input.int(10, '', inline = 'htf5', group = group_htf, minval = 1, maxval = 100)
+SettingsHTF5.crt            := input.bool(true, 'CRT-H/L', inline = 'htf5', group = group_htf, tooltip = 'Draw the CRT high / low of the newest closed candle of this row')
 
 SettingsHTF6.show           := input.bool(true, 'HTF 6      ', inline = 'htf6', group = group_htf)
 htf_6                       = input.timeframe('1W', '', inline = 'htf6', group = group_htf)
 SettingsHTF6.htf            := htf_6
 SettingsHTF6.max_display    := input.int(10, '', inline = 'htf6', group = group_htf, minval = 1, maxval = 100)
+SettingsHTF6.crt            := input.bool(true, 'CRT-H/L', inline = 'htf6', group = group_htf, tooltip = 'Draw the CRT high / low of the newest closed candle of this row')
 
 settings.max_sets           := input.int(6, 'Limit to next HTFs only', minval = 1, maxval = 6, group = group_htf)
 settings.use_custom_daily   := input.bool(false, 'Custom daily candle open     ', inline = 'customdaily', group = group_htf)
@@ -423,6 +446,13 @@ settings.trace_l_color      := input.color(color.new(color.gray, 50), 'Low  
 settings.trace_l_style      := input.string('····', '', options = ['⎯⎯⎯', '----', '····'], inline = '4', group = group_trace)
 settings.trace_l_size       := input.int(1, '', options = [1, 2, 3, 4], inline = '4', group = group_trace)
 settings.trace_anchor       := input.string('First Timeframe', 'Anchor to', options = ['First Timeframe', 'Last Timeframe'], group = group_trace)
+
+settings.crt_high_color     := input.color(#ef5350, 'CRT High', group = group_crt, inline = 'crtc')
+settings.crt_low_color      := input.color(#26a69a, '', group = group_crt, inline = 'crtc')
+settings.crt_style          := input.string('⎯⎯⎯', 'Line', options = ['⎯⎯⎯', '----', '····'], group = group_crt, inline = 'crtl')
+settings.crt_width          := input.int(1, '', options = [1, 2, 3, 4], group = group_crt, inline = 'crtl')
+settings.crt_pad            := input.int(3, 'Line padding', minval = 0, maxval = 20, group = group_crt, tooltip = 'Bars added at both ends of the CRT line, measured from the range candle')
+settings.crt_size           := input.string(size.small, 'Label size', options = [size.tiny, size.small, size.normal, size.large], group = group_crt)
 
 settings.label_show         := input.bool(false, 'Price Label           ', inline = 'label', group = group_label)
 settings.label_color        := input.color(color.new(color.black, 10), '', inline = 'label', group = group_label)
@@ -1194,6 +1224,60 @@ ActiveSetIndexes() =>
             array.push(res, i)
     res
 
+// @function            CRT high / low of the newest closed candle of one set
+// [merge] new: the range candle is candles[1], i.e. the last candle of the row that has actually closed
+// (candles[0] is the one still forming). The line is a fixed length, it is never extended to the right.
+DrawCrt(CandleSet candleSet) =>
+    bool active = candleSet.settings.crt and array.size(candleSet.candles) > 1
+
+    if not active
+        if not na(candleSet.crtHighLine)
+            line.delete(candleSet.crtHighLine)
+            candleSet.crtHighLine := na
+        if not na(candleSet.crtLowLine)
+            line.delete(candleSet.crtLowLine)
+            candleSet.crtLowLine := na
+        if not na(candleSet.crtHighLabel)
+            label.delete(candleSet.crtHighLabel)
+            candleSet.crtHighLabel := na
+        if not na(candleSet.crtLowLabel)
+            label.delete(candleSet.crtLowLabel)
+            candleSet.crtLowLabel := na
+
+    if active
+        Candle range_candle = array.get(candleSet.candles, 1)
+        int left            = box.get_left(range_candle.body) - settings.crt_pad
+        int right           = box.get_right(range_candle.body) + settings.crt_pad
+        int midX            = int(math.avg(left, right))
+
+        if na(candleSet.crtHighLine)
+            candleSet.crtHighLine := line.new(left, range_candle.h, right, range_candle.h, xloc = xloc.bar_index, color = settings.crt_high_color, style = LineStyle(settings.crt_style), width = settings.crt_width)
+        line.set_xy1(candleSet.crtHighLine, left, range_candle.h)
+        line.set_xy2(candleSet.crtHighLine, right, range_candle.h)
+        line.set_color(candleSet.crtHighLine, settings.crt_high_color)
+        line.set_style(candleSet.crtHighLine, LineStyle(settings.crt_style))
+        line.set_width(candleSet.crtHighLine, settings.crt_width)
+
+        if na(candleSet.crtLowLine)
+            candleSet.crtLowLine := line.new(left, range_candle.l, right, range_candle.l, xloc = xloc.bar_index, color = settings.crt_low_color, style = LineStyle(settings.crt_style), width = settings.crt_width)
+        line.set_xy1(candleSet.crtLowLine, left, range_candle.l)
+        line.set_xy2(candleSet.crtLowLine, right, range_candle.l)
+        line.set_color(candleSet.crtLowLine, settings.crt_low_color)
+        line.set_style(candleSet.crtLowLine, LineStyle(settings.crt_style))
+        line.set_width(candleSet.crtLowLine, settings.crt_width)
+
+        if na(candleSet.crtHighLabel)
+            candleSet.crtHighLabel := label.new(midX, range_candle.h, 'CRT-H', color = color_transparent, textcolor = settings.crt_high_color, style = label.style_label_down, size = settings.crt_size)
+        label.set_xy(candleSet.crtHighLabel, midX, range_candle.h)
+        label.set_textcolor(candleSet.crtHighLabel, settings.crt_high_color)
+        label.set_size(candleSet.crtHighLabel, settings.crt_size)
+
+        if na(candleSet.crtLowLabel)
+            candleSet.crtLowLabel := label.new(midX, range_candle.l, 'CRT-L', color = color_transparent, textcolor = settings.crt_low_color, style = label.style_label_up, size = settings.crt_size)
+        label.set_xy(candleSet.crtLowLabel, midX, range_candle.l)
+        label.set_textcolor(candleSet.crtLowLabel, settings.crt_low_color)
+        label.set_size(candleSet.crtLowLabel, settings.crt_size)
+
 // @function            move one set of candles to its slot to the right of the price, oldest to newest
 Reorder(CandleSet candleSet, int offset, array<int> active) =>
     int size        = array.size(candleSet.candles)
@@ -1280,6 +1364,9 @@ Reorder(CandleSet candleSet, int offset, array<int> active) =>
         if not na(candleSet.tfTimerBottom)
             label.delete(candleSet.tfTimerBottom)
             candleSet.tfTimerBottom := na
+
+    // the CRT levels ride along with the row, so they are refreshed with the same coordinates
+    DrawCrt(candleSet)
 
 // @function            refresh the remaining-time labels of one set
 UpdateTime(CandleSet candleSet) =>
@@ -1500,6 +1587,8 @@ Update(CandleSet candleSet, int offset, bool showTrace, array<int> active) =>
 // @function  one line of the legend for one displayed HTF set
 LegendLine(CandleSet candleSet) =>
     string res = HTFName(candleSet.settings.htf) + '  ·  ' + str.tostring(array.size(candleSet.candles)) + ' candles'
+    if candleSet.settings.crt
+        res := res + '  ·  CRT'
     if settings.fvg_show
         res := res + '  ·  FVG'
     if settings.vi_show

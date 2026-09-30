@@ -5,6 +5,7 @@ Straight up compilation — two published Pine Script indicators, fused into **o
 | File | What it is |
 | --- | --- |
 | `9os.XLR8.pine` | The merged indicator: `ICT HTF Candles (fadi)` + `Smart Money Concepts [LuxAlgo]` |
+| `tools/pine_lint.py` | Offline checks for the Pine v6 gotchas this repo has already hit (see below) |
 
 ## Source material
 
@@ -45,6 +46,24 @@ Groups that come from the SMC module are prefixed with `SMC · ` so the input tr
 The header comment block inside the `.pine` file lists every deviation from the two originals, and every line
 that differs from an original is tagged with `// [merge]` or `// [v6]` so the two can be diffed.
 
+## CRT highs & lows (new)
+
+Every HTF candle row can stamp **CRT-H** and **CRT-L** on the high and the low of its **newest closed candle** —
+the range candle of Candle Range Theory, which is where the liquidity sits.
+
+- **Per-row switch**: `CRT-H/L` sits on the right of each of the six `HTF n` rows, so you can run it on the
+  Daily row only, on everything, or on nothing. All six are **on** by default; turn off the ones you don't want.
+- **The levels ride along**: when a new HTF candle opens, the range candle rolls forward and the CRT lines and
+  tags move with it. `candles[0]` is the candle still forming, so the range candle is always `candles[1]`;
+  a row that has not closed a candle yet shows nothing.
+- **Fixed length, never extended right**: the line spans the range candle plus `Line padding` bars at each end
+  (default 3, so roughly an 8-bar level) — long enough to read as a level, short enough not to reach the next
+  row. It deliberately does **not** use `extend.right`.
+- **Tags**: `CRT-H` above the line and `CRT-L` below it, centred on the range candle, so nothing sits on top of
+  the newest candle of the row.
+- **Style group** `CRT Highs & Lows`: high / low colour, line style, width, padding and label size.
+- Each row's CRT drawing costs 2 lines + 2 labels. The legend appends `· CRT` to every row that has it on.
+
 ## Fixed after the first Pine compile
 
 | Problem | Fix |
@@ -70,6 +89,24 @@ Bugs of the same family were swept in one pass, so the second compile should not
 - The custom daily open (`Midnight / 8:30 / 9:30` New York) now compares New York calendar days instead of
   guessing from offsets, so the daily candle opens exactly once per day, on the first chart bar at or after the
   chosen hour, and it works on any chart timeframe.
+
+## Offline lint
+
+```bash
+python3 tools/pine_lint.py 9os.XLR8.pine
+```
+
+Five checks, each one added after a real failure in this repo:
+
+| Check | Why it exists |
+| --- | --- |
+| indentation / tabs | Pine is whitespace sensitive and the editor's error points at the wrong line when it drifts |
+| value-vs-void `if/else` | `CE10235`: one branch ending with a label, the other with `label.set_xy()` — this is what the first compile failed on |
+| forward references | a user function may not read a global or call a function declared further down (`Reorder()` → `DrawCrt()` was caught here) |
+| unknown UDT fields | `settings.foo` regexes used to also match `htfSettings.foo`; the matcher is anchored now |
+| trailing whitespace / parens | cheap noise that sometimes hides a real problem |
+
+TradingView remains the only authority — this just catches the classes of mistake it has already reported once.
 
 ## Disclaimer
 
