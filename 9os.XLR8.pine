@@ -45,6 +45,8 @@
 //      at 1 the scaling is an exact no-op. The bodies, wicks, imbalance boxes, CRT levels, interval stamps, the
 //      1 / 2 badges and the top/bottom labels all use the scaled coordinates; the CRT sweep / reclaim engine and
 //      the trace lines with their price labels keep working on the real prices.
+//    · the CRT level line comes to rest exactly on the wick that swept the range ("Line ends on"), so the level
+//      and the raid are read as one: the line's right end is line.get_x1() of candle 2's own wick.
 //    · box.set_top / set_bottom use min/max, so bullish bodies are no longer created inverted
 //    · [v6] label handling uses a "create if missing, then always move it" shape: an if/else whose one block
 //      returns a label and the other returns void is a compile error in v6 (CE10235)
@@ -480,7 +482,7 @@ settings.crt_min            := input.string('1H and up', 'Only for', options = [
 settings.crt_num_show       := input.bool(true, 'Candle numbers (1 / 2)', group = group_crt, inline = 'crtn')
 settings.crt_num_color      := input.color(#131722, '', group = group_crt, inline = 'crtn')
 settings.crt_num_size       := input.string(size.normal, '', options = [size.tiny, size.small, size.normal, size.large], group = group_crt, inline = 'crtn')
-settings.crt_reach          := input.string('Whole row', 'Line runs', options = ['Whole row', 'Range candle'], group = group_crt)
+settings.crt_reach          := input.string('Wick of candle 2', 'Line ends on', options = ['Wick of candle 2', 'Whole row', 'Range candle'], group = group_crt, tooltip = 'Where the level line comes to rest on the right.\n\nWick of candle 2 = exactly on the wick of the candle that swept the range, so the level touches the raid.\nWhole row = out to the newest candle of the row.\nRange candle = just past candle 1.\n\nThe left end always starts on candle 1 (minus the padding).')
 settings.crt_label_pos      := input.string('Right of line', 'CRT tag', options = ['Right of line', 'Above and below candle'], group = group_crt)
 
 settings.crt_high_color     := input.color(#ef5350, 'CRT High', group = group_crt, inline = 'crtc')
@@ -1412,15 +1414,21 @@ DrawCrt(CandleSet candleSet) =>
             candleSet.crtLowLabel := na
 
     if active
-        Candle rangeCandle  = array.get(candleSet.candles, rangeIdx)
-        int left            = box.get_left(rangeCandle.body) - settings.crt_pad
-        // "Whole row" reaches the newest candle of the row, "Range candle" stops just past candle 1
-        int right           = settings.crt_reach == 'Whole row' ? box.get_right(array.first(candleSet.candles).body) + settings.crt_pad : box.get_right(rangeCandle.body) + settings.crt_pad
+        Candle rangeCandle      = array.get(candleSet.candles, rangeIdx)
+        Candle confirmCandle    = array.get(candleSet.candles, confirmIdx)
+        int left                = box.get_left(rangeCandle.body) - settings.crt_pad
+        // [merge] the right end is what the level is read against, so it is placed exactly:
+        //   'Wick of candle 2' -> line.get_x1(wick) of the candle that swept the range, i.e. the wick's own column
+        //   'Whole row'        -> out to the newest candle of the row (+ padding)
+        //   'Range candle'     -> just past candle 1 (+ padding)
+        int right               = settings.crt_reach == 'Wick of candle 2' ? line.get_x1(confirmCandle.wick_up) : settings.crt_reach == 'Whole row' ? box.get_right(array.first(candleSet.candles).body) + settings.crt_pad : box.get_right(rangeCandle.body) + settings.crt_pad
+        // when the line stops on the wick, the tag is nudged just past it so it never sits on the candle
+        int labelGap            = settings.crt_reach == 'Wick of candle 2' ? math.max(settings.crt_pad, 1) : 0
         // the levels are drawn where the candle actually is on screen, the engine itself works on real prices
         float drawnHigh     = CandleY(rangeCandle, rangeCandle.h)
         float drawnLow      = CandleY(rangeCandle, rangeCandle.l)
         bool rightSide      = settings.crt_label_pos == 'Right of line'
-        int highX           = rightSide ? right : int(math.avg(box.get_left(rangeCandle.body), box.get_right(rangeCandle.body)))
+        int highX           = rightSide ? right + labelGap : int(math.avg(box.get_left(rangeCandle.body), box.get_right(rangeCandle.body)))
         int lowX            = highX
         string highStyle    = rightSide ? label.style_label_left : label.style_label_down
         string lowStyle     = rightSide ? label.style_label_left : label.style_label_up
