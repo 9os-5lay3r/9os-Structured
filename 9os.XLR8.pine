@@ -45,8 +45,9 @@
 //      at 1 the scaling is an exact no-op. The bodies, wicks, imbalance boxes, CRT levels, interval stamps, the
 //      1 / 2 badges and the top/bottom labels all use the scaled coordinates; the CRT sweep / reclaim engine and
 //      the trace lines with their price labels keep working on the real prices.
-//    · the CRT level line comes to rest exactly on the wick that swept the range ("Line ends on"), so the level
-//      and the raid are read as one: the line's right end is line.get_x1() of candle 2's own wick.
+//    · the CRT level line is drawn wick to wick: the right end is line.get_x1() of the wick that swept the range
+//      ("Line ends on") and the left end is line.get_x1() of candle 1's own wick ("Start on candle 1 wick"), so
+//      the line, the range and the raid are read as one object.
 //    · box.set_top / set_bottom use min/max, so bullish bodies are no longer created inverted
 //    · [v6] label handling uses a "create if missing, then always move it" shape: an if/else whose one block
 //      returns a label and the other returns void is a compile error in v6 (CE10235)
@@ -187,6 +188,7 @@ type Settings
     // CRT engine settings (shared by every row)
     string crt_min
     string crt_reach
+    bool crt_from_wick
     string crt_label_pos
     bool crt_num_show
     color crt_num_color
@@ -482,7 +484,8 @@ settings.crt_min            := input.string('1H and up', 'Only for', options = [
 settings.crt_num_show       := input.bool(true, 'Candle numbers (1 / 2)', group = group_crt, inline = 'crtn')
 settings.crt_num_color      := input.color(#131722, '', group = group_crt, inline = 'crtn')
 settings.crt_num_size       := input.string(size.normal, '', options = [size.tiny, size.small, size.normal, size.large], group = group_crt, inline = 'crtn')
-settings.crt_reach          := input.string('Wick of candle 2', 'Line ends on', options = ['Wick of candle 2', 'Whole row', 'Range candle'], group = group_crt, tooltip = 'Where the level line comes to rest on the right.\n\nWick of candle 2 = exactly on the wick of the candle that swept the range, so the level touches the raid.\nWhole row = out to the newest candle of the row.\nRange candle = just past candle 1.\n\nThe left end always starts on candle 1 (minus the padding).')
+settings.crt_reach          := input.string('Wick of candle 2', 'Line ends on', options = ['Wick of candle 2', 'Whole row', 'Range candle'], group = group_crt, tooltip = 'Where the level line comes to rest on the right.\n\nWick of candle 2 = exactly on the wick of the candle that swept the range, so the level touches the raid.\nWhole row = out to the newest candle of the row.\nRange candle = just past candle 1.\n\nThe left end is set by "Start on candle 1 wick".')
+settings.crt_from_wick      := input.bool(true, 'Start on candle 1 wick', group = group_crt, tooltip = 'On  = the level line starts exactly on candle 1\'s own wick, so the line and the wick meet at the tip (wick to wick with the "Line ends on" setting).\nOff = the line starts "Line padding" bars before candle 1, as it did before.')
 settings.crt_label_pos      := input.string('Right of line', 'CRT tag', options = ['Right of line', 'Above and below candle'], group = group_crt)
 
 settings.crt_high_color     := input.color(#ef5350, 'CRT High', group = group_crt, inline = 'crtc')
@@ -1416,7 +1419,9 @@ DrawCrt(CandleSet candleSet) =>
     if active
         Candle rangeCandle      = array.get(candleSet.candles, rangeIdx)
         Candle confirmCandle    = array.get(candleSet.candles, confirmIdx)
-        int left                = box.get_left(rangeCandle.body) - settings.crt_pad
+        // [merge] the left end can snap to candle 1's own wick column, so the level starts on the candle that
+        // defines it instead of floating in the bars before it
+        int left                = settings.crt_from_wick ? line.get_x1(rangeCandle.wick_up) : box.get_left(rangeCandle.body) - settings.crt_pad
         // [merge] the right end is what the level is read against, so it is placed exactly:
         //   'Wick of candle 2' -> line.get_x1(wick) of the candle that swept the range, i.e. the wick's own column
         //   'Whole row'        -> out to the newest candle of the row (+ padding)

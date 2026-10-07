@@ -80,10 +80,11 @@ A per-row state machine. Nothing is drawn on candle 1 — the levels only appear
 - **Per row**: `CRT-H/L` sits on the right of each of the six `HTF n` rows (all on by default).
 - **Timeframe**: `Only for` in the CRT group defaults to `1H and up` — your H1 / H4 / D / W / M workflow.
   Set it to `Any timeframe` if you also want the 5m / 15m rows to run the engine.
-- **Lines**: `Line ends on` = `Wick of candle 2` (default — the line comes to rest exactly on the wick of the
-  candle that swept the range), `Whole row` (out to the newest candle) or `Range candle` (just past candle 1).
-  The left end always starts on candle 1, so the level reads as one object: range → raid. `Line padding` is the
-  left overhang and the tag gap — never `extend.right`.
+- **Lines — wick to wick**: `Start on candle 1 wick` (on by default) puts the left end exactly on candle 1's
+  own wick, and `Line ends on` = `Wick of candle 2` (default) puts the right end exactly on the wick that swept
+  the range. The line therefore touches both wicks and reads as one object: range → raid.
+  Switch the start off to get the old `Line padding` overhang, or pick `Whole row` / `Range candle` for the right
+  end to run the line out to the newest candle or just past candle 1. Never `extend.right`.
 - **Tags**: `CRT tag` = `Right of line` (text sits at the end of the level) or `Above and below candle`.
 - **Candle numbers**: the `1` / `2` badges, with colour and size, can be switched off if you only want levels.
 - Every state change is driven by candle *closes* on the HTF, so it behaves identically on history and live.
